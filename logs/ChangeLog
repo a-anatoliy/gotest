@@ -1,0 +1,9 @@
+ChangeLog
+---------
+ - added mysql module
+ - created initial db schema file
+ - added html page with form to add new article
+ - added link to add article page
+ - implemented showing of all article list in index page
+ - implemented function to read articles from db
+ - implemented storing articles functionality
