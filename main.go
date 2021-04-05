@@ -1,6 +1,31 @@
 package main
 
 import (
-	frmt
+  "fmt"
+  "net/http"
+  "html/template"
 )
 
+func index(w http.ResponseWriter, r *http.Request) {
+  t, err := template.ParseFiles("templates/index.html","templates/header.html","templates/footer.html","templates/top_menu.html")
+
+  if err != nil {
+    fmt.Fprintf(w, err.Error())
+  }
+
+  t.ExecuteTemplate(w, "index", nil)
+}
+
+func handleFunc() {
+  http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static/"))))
+  http.HandleFunc("/",index)
+  http.ListenAndServe(":8080",nil)
+}
+
+func main () {
+  handleFunc()
+  fmt.Printf("User: %s with age: %d", "Alice", 16)
+  // fmt.Println("Connected to MySQL")
+  // fmt.Println("Inserting initial data")
+  fmt.Println("Something")
+}
