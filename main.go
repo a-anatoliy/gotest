@@ -24,8 +24,4 @@ func handleFunc() {
 
 func main () {
   handleFunc()
-  fmt.Printf("User: %s with age: %d", "Alice", 16)
-  // fmt.Println("Connected to MySQL")
-  // fmt.Println("Inserting initial data")
-  fmt.Println("Something")
 }
