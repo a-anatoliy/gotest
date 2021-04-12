@@ -5,6 +5,7 @@
 *.so
 *.dylib
 
+cfg/main.cfg
 # Test binary, built with `go test -c`
 *.test
 
