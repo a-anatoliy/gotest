@@ -1,0 +1,16 @@
+
+{{ define "show" }}
+
+{{ template "header" }}
+
+{{ template "topMenu" }}
+
+  <main class="px-3">
+    <h1> {{ .Title }}</h1>
+    <P class="lead">{{ .Announcement }}</P>
+    <P class="lead">{{ .FullText }}</P>
+  </main>
+
+{{ template "footer" }}
+{{ end }}
+
