@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/gorilla/mux"
 	"github.com/tkanos/gonfig"
 )
 
@@ -16,12 +17,16 @@ type Article struct {
 }
 
 type Configuration struct {
-	Port   int
-	paswrd string
-	user   string
+	DB_USERNAME string
+	DB_PASSWORD string
+	DB_PORT     string
+	DB_HOST     string
+	DB_NAME     string
 }
 
+var connectionString string
 var posts = []Article{}
+var showPost = Article{}
 
 func index(w http.ResponseWriter, r *http.Request) {
 	t, err := template.ParseFiles("templates/index.html", "templates/header.html", "templates/footer.html", "templates/top_menu.html")
@@ -30,7 +35,8 @@ func index(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, err.Error())
 	}
 
-	db, err := sql.Open("mysql", "root:******@tcp(127.0.0.1:3306)/test_lucky")
+	db, err := sql.Open("mysql", connectionString)
+
 	if err != nil {
 		fmt.Fprintf(w, err.Error())
 	}
@@ -67,6 +73,42 @@ func create(w http.ResponseWriter, r *http.Request) {
 	t.ExecuteTemplate(w, "create", nil)
 }
 
+func show_post(w http.ResponseWriter, r *http.Request) {
+	t, err := template.ParseFiles("templates/create.html", "templates/header.html", "templates/footer.html", "templates/top_menu.html", "templates/show.html")
+	if err != nil {
+		fmt.Fprintf(w, err.Error())
+	}
+	vars := mux.Vars(r)
+	w.WriteHeader(http.StatusOK)
+	// SELECT articles --------------------------------------------------------
+	db, err := sql.Open("mysql", connectionString)
+	if err != nil {
+		fmt.Fprintf(w, err.Error())
+		panic(err)
+	}
+
+	defer db.Close()
+
+	selectQuery := fmt.Sprintf("SELECT * FROM `articles` WHERE id = '%s'", vars["id"])
+	result, err := db.Query(selectQuery)
+	if err != nil {
+		panic(err)
+	}
+
+	showPost = Article{}
+	for result.Next() {
+		var post Article
+		err = result.Scan(&post.Id, &post.Title, &post.Announcement, &post.FullText)
+		if err != nil {
+			panic(err)
+		}
+
+		showPost = post
+	}
+
+	t.ExecuteTemplate(w, "show", showPost)
+}
+
 func save_article(w http.ResponseWriter, r *http.Request) {
 	title := r.FormValue("title")
 	announcement := r.FormValue("announcement")
@@ -75,7 +117,8 @@ func save_article(w http.ResponseWriter, r *http.Request) {
 	if title == "" || announcement == "" || full_text == "" {
 		fmt.Fprintf(w, "Required parameters not set")
 	} else {
-		db, err := sql.Open("mysql", "root:******@tcp(127.0.0.1:3306)/test_lucky")
+
+		db, err := sql.Open("mysql", connectionString)
 		if err != nil {
 			fmt.Fprintf(w, err.Error())
 			// panic(err)
@@ -97,18 +140,28 @@ func save_article(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleFunc() {
+
+	rtr := mux.NewRouter()
+	rtr.HandleFunc("/", index).Methods("GET")
+	rtr.HandleFunc("/create", create).Methods("GET")
+	rtr.HandleFunc("/save_article", save_article).Methods("POST")
+	rtr.HandleFunc("/post/{id:[0-9]+}", show_post).Methods("GET")
+
+	http.Handle("/", rtr)
+
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static/"))))
-	http.HandleFunc("/", index)
-	http.HandleFunc("/create", create)
-	http.HandleFunc("/save_article", save_article)
 	http.ListenAndServe(":8080", nil)
+
 }
 
 func main() {
 	configuration := Configuration{}
-	err := gonfig.GetConf("./cfg/main.cfg", &configuration)
+	err := gonfig.GetConf("./cfg/db.cfg", &configuration)
 	if err != nil {
 		panic(err)
 	}
+
+	connectionString = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", configuration.DB_USERNAME, configuration.DB_PASSWORD, configuration.DB_HOST, configuration.DB_PORT, configuration.DB_NAME)
+	// fmt.Fprintf(w, "%s", connectionString)
 	handleFunc()
 }

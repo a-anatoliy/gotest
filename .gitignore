@@ -5,6 +5,8 @@
 *.so
 *.dylib
 
+logs/
+
 cfg/main.cfg
 cfg/db.cfg
 # Test binary, built with `go test -c`
@@ -14,4 +16,4 @@ cfg/db.cfg
 *.out
 
 # Dependency directories (remove the comment below to include it)
-# vendor/
+vendor/
