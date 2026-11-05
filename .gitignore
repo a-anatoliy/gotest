@@ -17,3 +17,7 @@ cfg/db.cfg
 
 # Dependency directories (remove the comment below to include it)
 vendor/
+
+# Built binary
+/gotest
+/dist/

@@ -1,0 +1,5 @@
+.git
+.github
+cfg/db.cfg
+*.md
+gotest

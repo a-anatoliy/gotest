@@ -1,167 +1,106 @@
+// Command gotest is a small article board: a Go web app backed by MySQL.
 package main
 
 import (
+	"context"
 	"database/sql"
+	"errors"
+	"flag"
 	"fmt"
-	"html/template"
+	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/gorilla/mux"
-	"github.com/tkanos/gonfig"
 )
 
-type Article struct {
-	Id                            uint16
-	Title, Announcement, FullText string
-}
-
-type Configuration struct {
-	DB_USERNAME string
-	DB_PASSWORD string
-	DB_PORT     string
-	DB_HOST     string
-	DB_NAME     string
-}
-
-var connectionString string
-var posts = []Article{}
-var showPost = Article{}
-
-func index(w http.ResponseWriter, r *http.Request) {
-	t, err := template.ParseFiles("templates/index.html", "templates/header.html", "templates/footer.html", "templates/top_menu.html")
-
-	if err != nil {
-		fmt.Fprintf(w, err.Error())
-	}
-
-	db, err := sql.Open("mysql", connectionString)
-
-	if err != nil {
-		fmt.Fprintf(w, err.Error())
-	}
-
-	defer db.Close()
-
-	result, err := db.Query("select * from `articles`")
-	if err != nil {
-		panic(err)
-	}
-
-	posts = []Article{}
-	for result.Next() {
-		var post Article
-		err = result.Scan(&post.Id, &post.Title, &post.Announcement, &post.FullText)
-		if err != nil {
-			panic(err)
-		}
-
-		posts = append(posts, post)
-		// fmt.Println(fmt.Sprintf("Post: %s with id: %d", post.Title, post.Id))
-	}
-
-	t.ExecuteTemplate(w, "index", posts)
-}
-
-func create(w http.ResponseWriter, r *http.Request) {
-	t, err := template.ParseFiles("templates/create.html", "templates/header.html", "templates/footer.html", "templates/top_menu.html")
-
-	if err != nil {
-		fmt.Fprintf(w, err.Error())
-	}
-
-	t.ExecuteTemplate(w, "create", nil)
-}
-
-func show_post(w http.ResponseWriter, r *http.Request) {
-	t, err := template.ParseFiles("templates/create.html", "templates/header.html", "templates/footer.html", "templates/top_menu.html", "templates/show.html")
-	if err != nil {
-		fmt.Fprintf(w, err.Error())
-	}
-	vars := mux.Vars(r)
-	w.WriteHeader(http.StatusOK)
-	// SELECT articles --------------------------------------------------------
-	db, err := sql.Open("mysql", connectionString)
-	if err != nil {
-		fmt.Fprintf(w, err.Error())
-		panic(err)
-	}
-
-	defer db.Close()
-
-	selectQuery := fmt.Sprintf("SELECT * FROM `articles` WHERE id = '%s'", vars["id"])
-	result, err := db.Query(selectQuery)
-	if err != nil {
-		panic(err)
-	}
-
-	showPost = Article{}
-	for result.Next() {
-		var post Article
-		err = result.Scan(&post.Id, &post.Title, &post.Announcement, &post.FullText)
-		if err != nil {
-			panic(err)
-		}
-
-		showPost = post
-	}
-
-	t.ExecuteTemplate(w, "show", showPost)
-}
-
-func save_article(w http.ResponseWriter, r *http.Request) {
-	title := r.FormValue("title")
-	announcement := r.FormValue("announcement")
-	full_text := r.FormValue("full_text")
-
-	if title == "" || announcement == "" || full_text == "" {
-		fmt.Fprintf(w, "Required parameters not set")
-	} else {
-
-		db, err := sql.Open("mysql", connectionString)
-		if err != nil {
-			fmt.Fprintf(w, err.Error())
-			// panic(err)
-		}
-
-		defer db.Close()
-
-		insert, err := db.Query(fmt.Sprintf("insert into `articles` (`title`,`announcement`,`full_text`) values ('%s','%s','%s')", title, announcement, full_text))
-		if err != nil {
-			fmt.Fprintf(w, err.Error())
-			// panic(err)
-		}
-
-		defer insert.Close()
-	}
-
-	// fmt.Fprintf(w,"('%s','%s','%s')",title,announcement,full_text)
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
-func handleFunc() {
-
-	rtr := mux.NewRouter()
-	rtr.HandleFunc("/", index).Methods("GET")
-	rtr.HandleFunc("/create", create).Methods("GET")
-	rtr.HandleFunc("/save_article", save_article).Methods("POST")
-	rtr.HandleFunc("/post/{id:[0-9]+}", show_post).Methods("GET")
-
-	http.Handle("/", rtr)
-
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static/"))))
-	http.ListenAndServe(":8080", nil)
-
-}
-
 func main() {
-	configuration := Configuration{}
-	err := gonfig.GetConf("./cfg/db.cfg", &configuration)
+	configPath := flag.String("config", "cfg/db.cfg", "path to the JSON config file (optional if env vars are set)")
+	flag.Parse()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	if err := run(*configPath, logger); err != nil {
+		logger.Error("fatal", "err", err)
+		os.Exit(1)
+	}
+}
+
+func run(configPath string, logger *slog.Logger) error {
+	cfg, err := LoadConfig(configPath)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
-	connectionString = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", configuration.DB_USERNAME, configuration.DB_PASSWORD, configuration.DB_HOST, configuration.DB_PORT, configuration.DB_NAME)
-	// fmt.Fprintf(w, "%s", connectionString)
-	handleFunc()
+	db, err := sql.Open("mysql", cfg.DSN())
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
+	if err := waitForDB(db, 30*time.Second, logger); err != nil {
+		return err
+	}
+
+	srv, err := NewServer(NewMySQLStore(db), logger)
+	if err != nil {
+		return fmt.Errorf("load templates: %w", err)
+	}
+
+	httpServer := &http.Server{
+		Addr:              cfg.ListenAddr,
+		Handler:           srv.Routes(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	errCh := make(chan error, 1)
+	go func() {
+		logger.Info("listening", "addr", cfg.ListenAddr)
+		errCh <- httpServer.ListenAndServe()
+	}()
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("http server: %w", err)
+		}
+	case <-ctx.Done():
+		logger.Info("shutting down")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("graceful shutdown: %w", err)
+		}
+	}
+	return nil
+}
+
+// waitForDB retries the connection, which helps when the app and MySQL
+// start together (for example with docker compose).
+func waitForDB(db *sql.DB, timeout time.Duration, logger *slog.Logger) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		err := db.PingContext(ctx)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("database not reachable: %w", err)
+		}
+		logger.Info("waiting for database", "err", err)
+		time.Sleep(2 * time.Second)
+	}
 }
