@@ -1,0 +1,8 @@
+{
+  "DB_USERNAME": "gotest",
+  "DB_PASSWORD": "change-me",
+  "DB_HOST": "127.0.0.1",
+  "DB_PORT": "3306",
+  "DB_NAME": "gotest",
+  "LISTEN_ADDR": ":8080"
+}

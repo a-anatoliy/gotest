@@ -1,4 +1,3 @@
-
 {{ define "create" }}
 
 {{ template "header" }}
@@ -7,14 +6,14 @@
 
   <main class="px-3">
     <h1>Create Article</h1>
+    {{ with .Error }}<div class="alert alert-warning">{{ . }}</div>{{ end }}
     <form action="/save_article" method="POST">
-      <input type="text" name="title" id="title" placeholder="Enter article title" class="form-control"><br>
-      <textarea name="announcement" id="announcement" class="form-control" placeholder="Enter an article announcement"></textarea><br>
-      <textarea name="full_text" id="full_text" class="form-control" placeholder="Article" cols="20" rows="5"></textarea><br>
+      <input type="text" name="title" id="title" placeholder="Enter article title" class="form-control" maxlength="255" required value="{{ .Article.Title }}"><br>
+      <textarea name="announcement" id="announcement" class="form-control" placeholder="Enter an article announcement" maxlength="255" required>{{ .Article.Announcement }}</textarea><br>
+      <textarea name="full_text" id="full_text" class="form-control" placeholder="Article" cols="20" rows="5" required>{{ .Article.FullText }}</textarea><br>
       <button class="btn btn-warning">Create</button>
     </form>
   </main>
 
 {{ template "footer" }}
 {{ end }}
-

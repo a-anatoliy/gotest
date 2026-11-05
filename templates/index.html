@@ -11,14 +11,14 @@
     <div class="alert alert-danger">
       <h3>{{ .Title}} </h3>
       <p>{{ .Announcement }}</p>
-      <a href="/post/{{ .Id }}" class="btn btn-danger">read more</a>
+      <a href="/post/{{ .ID }}" class="btn btn-danger">read more</a>
     </div>
     {{ else }}
-    <p class="lead">There is no articles. yet</p>
+    <p class="lead">There are no articles yet.</p>
     {{ end }}
 
     <p class="lead">
-        <a href="#" class="btn btn-lg btn-secondary fw-bold border-white bg-white">Learn more</a>
+        <a href="/create" class="btn btn-lg btn-secondary fw-bold border-white bg-white">Add article</a>
     </p>
   </main>
 
